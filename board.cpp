@@ -403,7 +403,7 @@ Generates all legal moves and puts them in the external_movelist array that is p
 @return
    the number of legal moves in the position
 */
-int Board::gen_moves(Move * external_movelist, uint8_t tt_move){
+int Board::gen_moves(Move * external_movelist, char tt_move){
    has_takes = false;
    legal_move_count = 0;
    movelist = external_movelist;

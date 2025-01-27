@@ -196,7 +196,7 @@ struct Board {
 
         void push_move(Move &move);
         void undo(Move &move, uint32_t previous_kings);
-        int gen_moves(Move * external_movelist, uint8_t tt_move);
+        int gen_moves(Move * external_movelist, char tt_move);
         int check_win() const;
         bool check_repetition() const;
 
