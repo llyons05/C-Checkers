@@ -9,6 +9,7 @@ int main(){
     Board board;
     std::vector<Move> move_history;
     std::vector<uint32_t> king_history;
+    std::vector<uint8_t> reversible_moves_history;
 
     int x;
     int player_color; //0 == red, 1 == black
@@ -60,14 +61,16 @@ int main(){
             else{
                 std::cout << move_history.size() << " moves recorded\n";
                 if (move_history.size() >= 1){
-                    board.undo(move_history[move_history.size() - 1], king_history[king_history.size() - 2]);
+                    board.undo(move_history[move_history.size() - 1], king_history[king_history.size() - 2], reversible_moves_history[reversible_moves_history.size() - 2]);
                     move_history.pop_back();
                     king_history.pop_back();
+                    reversible_moves_history.pop_back();
                 }
                 if (move_history.size() >= 1){
-                    board.undo(move_history[move_history.size() - 1], king_history[king_history.size() - 2]);
+                    board.undo(move_history[move_history.size() - 1], king_history[king_history.size() - 2], reversible_moves_history[reversible_moves_history.size() - 2]);
                     move_history.pop_back();
                     king_history.pop_back();
+                    reversible_moves_history.pop_back();
                 }
                 undone = true;
             }
@@ -91,6 +94,7 @@ int main(){
             board.push_move(m);
             move_history.push_back(m);
             king_history.push_back(board.bb.kings);
+            reversible_moves_history.push_back(board.reversible_moves);
         }
         undone = false;
         movecount = board.gen_moves(movelist, (char)-1);

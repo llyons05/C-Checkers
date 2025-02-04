@@ -75,6 +75,7 @@ uint64_t Perft(Board& board, int depth, int ply) {
     if (depth <= 1) return (depth > 0)? movecount:1;
 
     uint32_t prev_kings = board.bb.kings;
+    uint8_t prev_reversible_moves = board.reversible_moves;
 
     for (int i = 0; i < movecount; i++) {
         Move move = movelist[i];
@@ -84,7 +85,7 @@ uint64_t Perft(Board& board, int depth, int ply) {
         nodes = Perft(board, depth - 1, ply + 1);
         sumnodes += nodes;
 
-        board.undo(move, prev_kings);
+        board.undo(move, prev_kings, prev_reversible_moves);
     }
 
     table.save(board.hash_key, sumnodes, depth);

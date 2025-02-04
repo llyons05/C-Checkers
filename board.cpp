@@ -29,6 +29,7 @@ Board::Board() {
    bb.stm = BLACK;
 
    reversible_moves = 0;
+   total_moves = 0;
    has_takes = false;
    set_flags();
 }
@@ -154,6 +155,7 @@ void Board::push_move(Move &move) {
 
    /* Increment the move counter and the counter for consecutive reversible moves */
    reversible_moves = ((piecetype <= WHITE_PIECE) || (taken)) ? 0 : reversible_moves+1;
+   total_moves++;
 
    /* Updates the hash key of the board */
    hash_key ^= hash.HASH_COLOR;
@@ -192,7 +194,7 @@ void Board::push_move(Move &move) {
    hash_key ^= hash.HASH_FUNCTION[piecetype][to]; // Update the board's hash
 
    /* Updates the repetition tracker */
-   rep_stack[reversible_moves] = hash_key; // Add the hash to the repetition list
+   rep_stack[total_moves%REP_STACK_SIZE] = hash_key; // Add the hash to the repetition list
 }
 
 /*
@@ -203,8 +205,9 @@ Undoes a move
 @param previous_kings 
    The king bitboard from the previous position
 */
-void Board::undo(Move &move, uint32_t previous_kings) {
-   if (reversible_moves) reversible_moves--;
+void Board::undo(Move &move, uint32_t previous_kings, uint8_t prev_reversible_moves) {
+   reversible_moves = prev_reversible_moves;
+   total_moves--;
 
    uint8_t to = move.to;
    uint8_t from = move.from;
@@ -588,13 +591,14 @@ Checks whether the current position is a draw by repetition or 50 move rule.
    the game is a draw by 50 move rule (50 moves without take or promotion)
 */
 bool Board::check_repetition() const{
-   if (!bb.kings) return false;
+   if (!bb.kings || (reversible_moves <= 2)) return false;
    if (reversible_moves >= DRAW_MOVE_RULE) return true;
-   int i = 0;
+
+   uint32_t i = total_moves - reversible_moves;
    if (reversible_moves & 1) i++;
 
-   for(; i < reversible_moves-1; i+=2){
-      if (rep_stack[i] == hash_key) return true;
+   for(; i < total_moves; i+=2){
+      if (rep_stack[i%REP_STACK_SIZE] == hash_key) return true;
    }
    return false;
 }

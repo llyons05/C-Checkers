@@ -17,6 +17,9 @@
 #define MAX_VAL 10000
 #define MAX_MOVES 28
 
+#define REP_STACK_SIZE 100
+
+
 /* Board Representation
          WHITE
    28    29    30    31
@@ -182,9 +185,10 @@ struct Board {
         uint8_t king_count[2];
 
         bool has_takes;
-        int reversible_moves;
+        uint8_t reversible_moves;
+        uint32_t total_moves;
         uint64_t hash_key;
-        uint64_t rep_stack[DRAW_MOVE_RULE];
+        uint64_t rep_stack[REP_STACK_SIZE];
 
         Board();
 
@@ -195,18 +199,14 @@ struct Board {
         void set_random_pos(int moves_to_play);
 
         void push_move(Move &move);
-        void undo(Move &move, uint32_t previous_kings);
+        void undo(Move &move, uint32_t previous_kings, uint8_t prev_reversible_moves);
         int gen_moves(Move * external_movelist, char tt_move);
         int check_win() const;
         bool check_repetition() const;
 
-        inline void clear_pos_history() {
-            reversible_moves = 0;
-        }
-
     private:
         /* Number of legal moves on the board */
-        int legal_move_count;
+        uint8_t legal_move_count;
 
         Move * movelist;
 

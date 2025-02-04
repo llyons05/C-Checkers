@@ -14,10 +14,8 @@ https://mediocrechess.blogspot.com/2007/01/guide-aspiration-windows-killer-moves
 
 cpu::cpu(int cpu_color, int cpu_depth){
     color = cpu_color;
-    opponent = 1 - color;
     max_depth = cpu_depth;
     current_depth = max_depth;
-    eval_multiplier = opponent * 2 - 1;
     table.set_size(0x4000000);
     eval_table.set_size(0x4000000);
     std::cout << "TABLE SIZE: " << table.tt_size << "\n";
@@ -27,8 +25,6 @@ cpu::cpu(int cpu_color, int cpu_depth){
 /* changes the color that the cpu plays for */
 void cpu::set_color(int new_color){
     color = new_color;
-    opponent = 1 - color;
-    eval_multiplier = opponent * 2 - 1;
 }
 
 /* sets the depth of the cpu */
@@ -36,7 +32,7 @@ void cpu::set_depth(int new_depth){
     max_depth = new_depth;
 }
 
-int cpu::mobility_score(Bitboards board) {
+int cpu::mobility_score(Bitboards &board) {
     const uint32_t empty = ~(board.pieces[BLACK] | board.pieces[WHITE]);
     const uint32_t black_kings = board.pieces[BLACK] & board.kings;
     const uint32_t white_kings = board.pieces[WHITE] & board.kings;
@@ -65,7 +61,7 @@ int cpu::mobility_score(Bitboards board) {
     return (count_bits(black_result) - count_bits(white_result)) * 10;
 }
 
-int cpu::past_pawns(Bitboards board){
+int cpu::past_pawns(Bitboards &board){
     uint32_t coverage[2] = {northFill(board.pieces[BLACK]), southFill(board.pieces[WHITE])};
     uint32_t king_coverage[2] = {board.pieces[BLACK] & board.kings, board.pieces[WHITE] & board.kings};
     uint32_t paths[2] = {(board.pieces[BLACK] & ~board.kings) & ~coverage[WHITE], (board.pieces[WHITE] & ~board.kings) & ~coverage[BLACK]};
@@ -209,6 +205,7 @@ int cpu::search(Board &board, int depth, int ply, int alpha, int beta, int is_pv
     int moves_tried = 0;
     int new_depth;
     uint32_t prev_kings;
+    uint8_t prev_reversible_moves;
 
     Move movelist[MAX_MOVES];
     Move current_move;
@@ -256,6 +253,7 @@ int cpu::search(Board &board, int depth, int ply, int alpha, int beta, int is_pv
     set_move_scores(movelist, movecount, ply);
     bestmove = movelist[0].id;
     prev_kings = board.bb.kings;
+    prev_reversible_moves = board.reversible_moves;
 
     if (depth < 3
         && !is_pv
@@ -320,7 +318,7 @@ int cpu::search(Board &board, int depth, int ply, int alpha, int beta, int is_pv
             goto re_search;
         }
 
-        board.undo(current_move, prev_kings);
+        board.undo(current_move, prev_kings, prev_reversible_moves);
 
         if (search_cancelled) return 0;
 
@@ -386,6 +384,7 @@ int cpu::quiesce(Board &board, int ply, int alpha, int beta){
     Move movelist[MAX_MOVES];
     int movecount = board.gen_moves(movelist, (char)-1);
     uint32_t prev_kings = board.bb.kings;
+    uint8_t prev_reversible_moves = board.reversible_moves;
 
     /* Check if the game is over */
     if (!movecount){
@@ -396,7 +395,7 @@ int cpu::quiesce(Board &board, int ply, int alpha, int beta){
     else if (movecount == 1){
         board.push_move(movelist[0]);
         int val = -quiesce(board, ply + 1, -beta, -alpha);
-        board.undo(movelist[0], prev_kings);
+        board.undo(movelist[0], prev_kings, prev_reversible_moves);
         return val;
     }
 
@@ -419,7 +418,7 @@ int cpu::quiesce(Board &board, int ply, int alpha, int beta){
 
         val = -quiesce(board, ply + 1, -beta, -alpha);
 
-        board.undo(movelist[i], prev_kings);
+        board.undo(movelist[i], prev_kings, prev_reversible_moves);
 
         if (search_cancelled) return 0;
 
@@ -438,6 +437,7 @@ int cpu::search_root(Board &board, int depth, int alpha, int beta){
     int val = 0;
     int best = -MAX_VAL;
     uint32_t prev_kings = board.bb.kings;
+    uint8_t prev_reversible_moves = board.reversible_moves;
 
     for (int i = 0; i < movecount; i++){
 
@@ -469,8 +469,7 @@ int cpu::search_root(Board &board, int depth, int alpha, int beta){
                 val = -search(board, depth - 1, 0, -beta, -alpha, IS_PV);
             }
         }
-
-        board.undo(movelist[i], prev_kings);
+        board.undo(movelist[i], prev_kings, prev_reversible_moves);
 
         if (val > best) best = val;
 
@@ -554,7 +553,7 @@ int cpu::search_iterate(Board &board){
 }
 
 /* Handles setting the killer moves */
-void cpu::set_killers(Move m, int ply){
+void cpu::set_killers(Move &m, int ply){
     if (!m.captures){
         if (m.from != killers[ply][0].from || m.to != killers[ply][0].to){
             killers[ply][1] = killers[ply][0];
@@ -615,7 +614,7 @@ void cpu::order_moves(int movecount, Move * m, int current){
 /*
 Finds the best move, but is limited by a time limit t(seconds)
 */
-Move cpu::time_search(Board board, double t_limit, bool feedback){
+Move cpu::time_search(Board &board, double t_limit, bool feedback){
     Move movelist[MAX_MOVES];
     board.gen_moves(movelist, (char)-1);
     move_to_make = movelist[0];
