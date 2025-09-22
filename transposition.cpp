@@ -30,7 +30,6 @@ be called ONE TIME per transposition table otherwise I'm
 pretty sure it causes a memory leak.
 */
 int tt_table::set_size(int size) {
-    free(tt);
     if (size & (size - 1)){
         size--;
         for (int i = 1; i < 32; i=i*2){
@@ -115,7 +114,6 @@ void tt_table::save(uint64_t boardhash, uint8_t depth, int ply, int val, char fl
 }
 
 int tt_eval_table::set_size(int size){
-    free(ett);
     if (size & (size - 1)){
         size--;
         for (int i=1; i < 32; i++){

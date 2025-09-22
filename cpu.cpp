@@ -12,14 +12,27 @@ https://mediocrechess.blogspot.com/2007/01/guide-aspiration-windows-killer-moves
 
 #include "transposition.hpp"
 
-cpu::cpu(int cpu_color, int cpu_depth){
+cpu::cpu(int cpu_color, int cpu_depth,
+    const int TT_SIZE,
+    const int ETT_SIZE,
+    const int PIECE_VALUE,
+    const int KING_VALUE,
+    const int CENTER_VALUE,
+    const int MOBILE_PIECE_VALUE,
+    const int WINDOW_NARROWING_DEPTH) : 
+    TT_SIZE(TT_SIZE),
+    ETT_SIZE(ETT_SIZE),
+    PIECE_VALUE(PIECE_VALUE),
+    KING_VALUE(KING_VALUE),
+    CENTER_VALUE(CENTER_VALUE),
+    MOBILE_PIECE_VALUE(MOBILE_PIECE_VALUE),
+    WINDOW_NARROWING_DEPTH(WINDOW_NARROWING_DEPTH) {
+
     color = cpu_color;
     max_depth = cpu_depth;
     current_depth = max_depth;
-    table.set_size(0x4000000);
-    eval_table.set_size(0x4000000);
-    std::cout << "TABLE SIZE: " << table.tt_size << "\n";
-    std::cout << "EVAL TABLE SIZE: " << eval_table.ett_size << "\n";
+    table.set_size(TT_SIZE);
+    eval_table.set_size(ETT_SIZE);
 }
 
 /* changes the color that the cpu plays for */
