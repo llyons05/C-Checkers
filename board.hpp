@@ -43,6 +43,30 @@ const uint32_t MASK_L5 = S[ 4] | S[ 5] | S[ 6] | S[12] | S[13] | S[14] | S[20] |
 const uint32_t MASK_R3 = S[28] | S[29] | S[30] | S[20] | S[21] | S[22] | S[12] | S[13] | S[14] | S[ 4] | S[ 5] | S[ 6];
 const uint32_t MASK_R5 = S[25] | S[26] | S[27] | S[17] | S[18] | S[19] | S[ 9] | S[10] | S[11];
 
+inline uint32_t shift_L3(uint32_t bits) {
+    return (bits & MASK_L3) << 3;
+}
+
+inline uint32_t shift_L5(uint32_t bits) {
+    return (bits & MASK_L5) << 5;
+}
+
+inline uint32_t shift_R3(uint32_t bits) {
+    return (bits & MASK_R3) >> 3;
+}
+
+inline uint32_t shift_R5(uint32_t bits) {
+    return (bits & MASK_R5) >> 5;
+}
+
+inline uint32_t all_LShift(uint32_t bits) {
+    return shift_L3(bits) | shift_L5(bits);
+}
+
+inline uint32_t all_RShift(uint32_t bits) {
+    return shift_R3(bits) | shift_R5(bits);
+}
+
 const uint32_t RANK[8] = {
     S[0]  | S[1]  | S[2]  | S[3],
     S[4]  | S[5]  | S[6]  | S[7],
@@ -58,8 +82,6 @@ const uint32_t PROMO_MASK[2] = {RANK[7], RANK[0]};
 
 const int DRAW_MOVE_RULE = 50;
 const int REP_LIMIT = 3;
-
-const uint64_t TAKEN_PIECES = (((uint64_t)1 << 32) - 1) << 17;
 
 enum eColor {
     BLACK,
@@ -126,18 +148,18 @@ struct Bitboards {
     inline uint32_t get_black_movers() const {
         const uint32_t empty = ~(pieces[BLACK] | pieces[WHITE]);
         const uint32_t black_kings = pieces[BLACK] & kings;
-        uint32_t result = ((((empty & MASK_R3) >> 3) | ((empty & MASK_R5) >> 5)) | (empty >> 4)) & pieces[BLACK];
+        uint32_t result = (all_RShift(empty) | (empty >> 4)) & pieces[BLACK];
         if (black_kings) {
-            result |= ((((empty & MASK_L3) << 3) | ((empty & MASK_L5) << 5)) | (empty << 4)) & black_kings;
+            result |= (all_LShift(empty) | (empty << 4)) & black_kings;
         }
         return result;
     }
     inline uint32_t get_white_movers() const {
         const uint32_t empty = ~(pieces[BLACK] | pieces[WHITE]);
         const uint32_t white_kings = pieces[WHITE] & kings;
-        uint32_t result = ((((empty & MASK_L3) << 3) | ((empty & MASK_L5) << 5)) | (empty << 4)) & pieces[WHITE];
+        uint32_t result = (all_LShift(empty) | (empty << 4)) & pieces[WHITE];
         if (white_kings) {
-            result |= ((((empty & MASK_R3) >> 3) | ((empty & MASK_R5) >> 5)) | (empty >> 4)) & white_kings;
+            result |= (all_RShift(empty) | (empty >> 4)) & white_kings;
         }
         return result;
     }
@@ -146,15 +168,15 @@ struct Bitboards {
         const uint32_t black_kings = pieces[BLACK] & kings;
 
         uint32_t temp = (empty >> 4) & pieces[WHITE];
-        uint32_t jumpers = (((temp & MASK_R3) >> 3) | ((temp & MASK_R5) >> 5));
-        temp = (((empty & MASK_R3) >> 3) | ((empty & MASK_R5) >> 5)) & pieces[WHITE];
+        uint32_t jumpers = all_RShift(temp);
+        temp = all_RShift(empty) & pieces[WHITE];
         jumpers |= (temp >> 4);
         jumpers &= pieces[BLACK];
 
         if (black_kings) {
             temp = (empty << 4) & pieces[WHITE];
-            jumpers |= (((temp & MASK_L3) << 3) | ((temp & MASK_L5) << 5)) & black_kings;
-            temp = (((empty & MASK_L3) << 3) | ((empty & MASK_L5) << 5)) & pieces[WHITE];
+            jumpers |= all_LShift(temp) & black_kings;
+            temp = all_LShift(empty) & pieces[WHITE];
             jumpers |= (temp << 4) & black_kings;
         }
         return jumpers;
@@ -164,14 +186,14 @@ struct Bitboards {
         const uint32_t white_kings = pieces[WHITE] & kings;
 
         uint32_t temp = (empty << 4) & pieces[BLACK];
-        uint32_t jumpers = (((temp & MASK_L3) << 3) | ((temp & MASK_L5) << 5));
-        temp = (((empty & MASK_L3) << 3) | ((empty & MASK_L5) << 5)) & pieces[BLACK];
+        uint32_t jumpers = all_LShift(temp);
+        temp = all_LShift(empty) & pieces[BLACK];
         jumpers |= (temp << 4);
         jumpers &= pieces[WHITE];
         if (white_kings) {
             temp = (empty >> 4) & pieces[BLACK];
-            jumpers |= (((temp & MASK_R3) >> 3) | ((temp & MASK_R5) >> 5)) & white_kings;
-            temp = (((empty & MASK_R3) >> 3) | ((empty & MASK_R5) >> 5)) & pieces[BLACK];
+            jumpers |= all_RShift(temp) & white_kings;
+            temp = all_RShift(empty) & pieces[BLACK];
             jumpers |= (temp >> 4) & white_kings;
         }
         return jumpers;

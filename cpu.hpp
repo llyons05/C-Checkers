@@ -16,6 +16,11 @@
 //VERSION 1.0
 class cpu{
     int max_depth;
+    const static int PIECE_VALUE = 75;
+    const static int KING_VALUE = 25;
+    const static int CENTER_VALUE = 10;
+    const static int MOBILE_PIECE_VALUE = 10;
+    const static int WINDOW_NARROWING_DEPTH = 8;
 
     public:
         int current_depth;
@@ -34,7 +39,7 @@ class cpu{
         void set_color(int new_color);
         void set_depth(int new_depth);
 
-    private:
+    protected:
         Move killers[1024][2];
         int cutoff[2][32][32];
         int history[2][32][32];

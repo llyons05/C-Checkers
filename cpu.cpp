@@ -37,28 +37,28 @@ int cpu::mobility_score(Bitboards &board) {
     const uint32_t black_kings = board.pieces[BLACK] & board.kings;
     const uint32_t white_kings = board.pieces[WHITE] & board.kings;
     
-    uint32_t black_squares = (((board.pieces[BLACK] & MASK_L3) << 3) | ((board.pieces[BLACK] & MASK_L5) << 5)) | (board.pieces[BLACK] << 4);
+    uint32_t black_squares = all_LShift(board.pieces[BLACK]) | (board.pieces[BLACK] << 4);
     if (black_kings)
-        black_squares |= (((black_kings & MASK_R3) >> 3) | ((black_kings & MASK_R5) >> 5)) | (black_kings >> 4);
+        black_squares |= all_RShift(black_kings) | (black_kings >> 4);
     black_squares &= empty;
 
-    uint32_t white_squares = (((board.pieces[WHITE] & MASK_R3) >> 3) | ((board.pieces[WHITE] & MASK_R5) >> 5)) | (board.pieces[WHITE] >> 4);
+    uint32_t white_squares = all_RShift(board.pieces[WHITE]) | (board.pieces[WHITE] >> 4);
     if (white_kings)
-        white_squares |= (((white_kings & MASK_L3) << 3) | ((white_kings & MASK_L5) << 5)) | (white_kings << 4);
+        white_squares |= all_LShift(white_kings) | (white_kings << 4);
     white_squares &= empty;
 
     const uint32_t unique_black_moves = (black_squares & ~white_squares);
     const uint32_t unique_white_moves = (white_squares & ~black_squares);
 
-    uint32_t black_result = ((((unique_black_moves & MASK_R3) >> 3) | ((unique_black_moves & MASK_R5) >> 5)) | (unique_black_moves >> 4)) & board.pieces[BLACK];
+    uint32_t black_result = (all_RShift(unique_black_moves) | (unique_black_moves >> 4)) & board.pieces[BLACK];
     if (black_kings)
-        black_result |= ((((unique_black_moves & MASK_L3) << 3) | ((unique_black_moves & MASK_L5) << 5)) | (unique_black_moves << 4)) & black_kings;
+        black_result |= (all_LShift(unique_black_moves) | (unique_black_moves << 4)) & black_kings;
     
-    uint32_t white_result = ((((unique_white_moves & MASK_L3) << 3) | ((unique_white_moves & MASK_L5) << 5)) | (unique_white_moves << 4)) & board.pieces[WHITE];
+    uint32_t white_result = (all_LShift(unique_white_moves) | (unique_white_moves << 4)) & board.pieces[WHITE];
     if (white_kings)
-        white_result |= ((((unique_white_moves & MASK_R3) >> 3) | ((unique_white_moves & MASK_R5) >> 5)) | (unique_white_moves >> 4)) & white_kings;
+        white_result |= (all_RShift(unique_white_moves) | (unique_white_moves >> 4)) & white_kings;
 
-    return (count_bits(black_result) - count_bits(white_result)) * 10;
+    return (count_bits(black_result) - count_bits(white_result)) * MOBILE_PIECE_VALUE;
 }
 
 int cpu::past_pawns(Bitboards &board){
@@ -74,12 +74,12 @@ int cpu::past_pawns(Bitboards &board){
     while(paths[BLACK] || paths[WHITE]){
         if (turn) {
             /* Increment Paths */
-            paths[WHITE] = (((paths[WHITE] & MASK_R3) >> 3) | ((paths[WHITE] & MASK_R5) >> 5)) | (paths[WHITE] >> 4);
+            paths[WHITE] = all_RShift(paths[WHITE]) | (paths[WHITE] >> 4);
             paths[WHITE] &= ~(coverage[BLACK] | king_coverage[BLACK]);
 
             /* Increment Coverage */
-            coverage[WHITE] |= (((coverage[WHITE] & MASK_R3) >> 3) | ((coverage[WHITE] & MASK_R5) >> 5)) | (coverage[WHITE] >> 4);
-            king_coverage[WHITE] |= (((king_coverage[WHITE] & MASK_L3) << 3) | ((king_coverage[WHITE] & MASK_L5) << 5)) | (king_coverage[WHITE] << 4);
+            coverage[WHITE] |= all_RShift(coverage[WHITE]) | (coverage[WHITE] >> 4);
+            king_coverage[WHITE] |= all_LShift(king_coverage[WHITE]) | (king_coverage[WHITE] << 4);
 
             paths[BLACK] &= ~(coverage[WHITE] | king_coverage[WHITE]);
 
@@ -93,12 +93,12 @@ int cpu::past_pawns(Bitboards &board){
         }
         else{
             /* Increment Paths */
-            paths[BLACK] = (((paths[BLACK] & MASK_L3) << 3) | ((paths[BLACK] & MASK_L5) << 5)) | (paths[BLACK] << 4);
+            paths[BLACK] = all_RShift(paths[BLACK]) | (paths[BLACK] << 4);
             paths[BLACK] &= ~(coverage[WHITE] | king_coverage[WHITE]);
 
             /* Increment Coverage */
-            coverage[BLACK] |= (((coverage[BLACK] & MASK_L3) << 3) | ((coverage[BLACK] & MASK_L5) << 5)) | (coverage[BLACK] << 4);
-            king_coverage[BLACK] |= (((king_coverage[BLACK] & MASK_R3) >> 3) | ((king_coverage[BLACK] & MASK_R5) >> 5)) | (king_coverage[BLACK] >> 4);
+            coverage[BLACK] |= all_LShift(coverage[BLACK]) | (coverage[BLACK] << 4);
+            king_coverage[BLACK] |= all_RShift(king_coverage[BLACK]) | (king_coverage[BLACK] >> 4);
 
             paths[WHITE] &= ~(coverage[BLACK] | king_coverage[BLACK]);
 
@@ -126,21 +126,21 @@ int cpu::eval(Board &board){
     uint32_t black_kings = board.bb.pieces[BLACK] & board.bb.kings;
     uint32_t white_kings = board.bb.pieces[WHITE] & board.bb.kings;
 
-    int result = (board.piece_count[BLACK] - board.piece_count[WHITE]) * 75;
-    result    += (board.king_count[BLACK] - board.king_count[WHITE]) * 25;
+    int result = (board.piece_count[BLACK] - board.piece_count[WHITE]) * PIECE_VALUE;
+    result    += (board.king_count[BLACK] - board.king_count[WHITE]) * KING_VALUE;
     result    += mobility_score(board.bb);
 
     uint32_t piece;
     while (black_kings){
         piece = black_kings & -black_kings;
-        if (piece & CENTER_8) result += 10;
-        else if (piece & SINGLE_EDGE) result -= 10;
+        if (piece & CENTER_8) result += CENTER_VALUE;
+        else if (piece & SINGLE_EDGE) result -= CENTER_VALUE;
         black_kings &= black_kings-1;
     }
     while (white_kings){
         piece = white_kings & -white_kings;
-        if (piece & CENTER_8) result -= 10;
-        else if (piece & SINGLE_EDGE) result += 10;
+        if (piece & CENTER_8) result -= CENTER_VALUE;
+        else if (piece & SINGLE_EDGE) result += CENTER_VALUE;
         white_kings &= white_kings-1;
     }
 
@@ -506,7 +506,7 @@ int cpu::search_widen(Board &board, int depth, int val){
     const int max_searches = 3;
 
     /* Narrow the search window, using the last search's value as a basis. */
-    int window = (depth < 8) ? 50 : (20 + abs(val) / 8);
+    int window = (depth < WINDOW_NARROWING_DEPTH) ? 50 : (20 + abs(val) / 8);
     int alpha  = val - window;
     int beta   = val + window;
 

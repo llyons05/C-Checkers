@@ -276,26 +276,26 @@ bool Board::add_black_jump(uint32_t start_square, uint32_t current_square, uint8
 
    // Does a quick check to see whether this piece can even jump
    uint32_t temp = (empty >> 4) & temp_white;
-   uint32_t jump_check = (((temp & MASK_R3) >> 3) | ((temp & MASK_R5) >> 5));
-   temp = (((empty & MASK_R3) >> 3) | ((empty & MASK_R5) >> 5)) & temp_white;
+   uint32_t jump_check = all_RShift(temp);
+   temp = all_RShift(empty) & temp_white;
    jump_check |= (temp >> 4);
 
    if (start_square & bb.kings) {
       /* Finish checking if this piece can move */
       temp = (empty << 4) & temp_white;
-      jump_check |= (((temp & MASK_L3) << 3) | ((temp & MASK_L5) << 5));
-      temp = (((empty & MASK_L3) << 3) | ((empty & MASK_L5) << 5)) & temp_white;
+      jump_check |= all_LShift(temp);
+      temp = all_LShift(empty) & temp_white;
       jump_check |= (temp << 4);
       if (!(current_square & jump_check)) return false;
 
       taken = (current_square >> 4) & temp_white;
-      dest = (((taken & MASK_R3) >> 3) | ((taken & MASK_R5) >> 5)) & empty;
+      dest = all_RShift(taken) & empty;
       if (taken && dest) {
          if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
             movegen_push(start_square, dest, new_captures, taken_bb | taken);
          result = true;
       }
-      taken = (((current_square & MASK_R3) >> 3) | ((current_square & MASK_R5) >> 5)) & temp_white;
+      taken = all_RShift(current_square) & temp_white;
       dest = (taken >> 4) & empty;
       if (taken && dest) {
          if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
@@ -307,13 +307,13 @@ bool Board::add_black_jump(uint32_t start_square, uint32_t current_square, uint8
       if (!(current_square & jump_check)) return false;
 
    taken = (current_square << 4) & temp_white;
-   dest = (((taken & MASK_L3) << 3) | ((taken & MASK_L5) << 5)) & empty;
+   dest = all_LShift(taken) & empty;
    if (taken && dest) {
       if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
          movegen_push(start_square, dest, new_captures, taken_bb | taken);
       result = true;
    }
-   taken = (((current_square & MASK_L3) << 3) | ((current_square & MASK_L5) << 5)) & temp_white;
+   taken = all_LShift(current_square) & temp_white;
    dest = (taken << 4) & empty;
    if (taken && dest) {
       if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
@@ -349,27 +349,27 @@ bool Board::add_white_jump(uint32_t start_square, uint32_t current_square, uint8
 
    // Does a quick check to see whether this piece can even jump
    uint32_t temp = (empty << 4) & temp_black;
-   uint32_t jump_check = (((temp & MASK_L3) << 3) | ((temp & MASK_L5) << 5));
-   temp = (((empty & MASK_L3) << 3) | ((empty & MASK_L5) << 5)) & temp_black;
+   uint32_t jump_check = all_LShift(temp);
+   temp = all_LShift(empty) & temp_black;
    jump_check |= (temp << 4);
 
    if (start_square & bb.kings){
       /* Finish checking if this piece can move */
       temp = (empty >> 4) & temp_black;
-      jump_check |= (((temp & MASK_R3) >> 3) | ((temp & MASK_R5) >> 5));
-      temp = (((empty & MASK_R3) >> 3) | ((empty & MASK_R5) >> 5)) & temp_black;
+      jump_check |= all_RShift(temp);
+      temp = all_RShift(empty) & temp_black;
       jump_check |= (temp >> 4);
 
       if (!(current_square & jump_check)) return false;
       
       taken = (current_square << 4) & temp_black;
-      dest = (((taken & MASK_L3) << 3) | ((taken & MASK_L5) << 5)) & empty;
+      dest = all_LShift(taken) & empty;
       if (taken && dest) {
          if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
             movegen_push(start_square, dest, new_captures, taken_bb | taken);
          result = true;
       }
-      taken = (((current_square & MASK_L3) << 3) | ((current_square & MASK_L5) << 5)) & temp_black;
+      taken = all_LShift(current_square) & temp_black;
       dest = (taken << 4) & empty;
       if (taken && dest) {
          if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
@@ -381,13 +381,13 @@ bool Board::add_white_jump(uint32_t start_square, uint32_t current_square, uint8
       if (!(current_square & jump_check)) return false;
    
    taken = (current_square >> 4) & temp_black;
-   dest = (((taken & MASK_R3) >> 3) | ((taken & MASK_R5) >> 5)) & empty;
+   dest = all_RShift(taken) & empty;
    if (taken && dest) {
       if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
          movegen_push(start_square, dest, new_captures, taken_bb | taken);
       result = true;
    }
-   taken = (((current_square & MASK_R3) >> 3) | ((current_square & MASK_R5) >> 5)) & temp_black;
+   taken = all_RShift(current_square) & temp_black;
    dest = (taken >> 4) & empty;
    if (taken && dest) {
       if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
@@ -421,12 +421,12 @@ int Board::gen_moves(Move * external_movelist, char tt_move){
          while (jumpers) { //Loop through white pieces that can jump
             piece = jumpers & -jumpers;
             taken = (piece >> 4) & bb.pieces[BLACK];
-            dest = (((taken & MASK_R3) >> 3) | ((taken & MASK_R5) >> 5)) & empty;
+            dest = all_RShift(taken) & empty;
             if (taken && dest) {
                if (!add_white_jump(piece, dest, 1, taken))
                   movegen_push(piece, dest, 1, taken);
             }
-            taken = (((piece & MASK_R3) >> 3) | ((piece & MASK_R5) >> 5)) & bb.pieces[BLACK];
+            taken = all_RShift(piece) & bb.pieces[BLACK];
             dest = (taken >> 4) & empty;
             if (taken && dest) {
                if (!add_white_jump(piece, dest, 1, taken))
@@ -434,12 +434,12 @@ int Board::gen_moves(Move * external_movelist, char tt_move){
             }
             if (piece & bb.kings) {
                taken = (piece << 4) & bb.pieces[BLACK];
-               dest = (((taken & MASK_L3) << 3) | ((taken & MASK_L5) << 5)) & empty;
+               dest = all_LShift(taken) & empty;
                if (taken && dest) {
                   if (!add_white_jump(piece, dest, 1, taken))
                      movegen_push(piece, dest, 1, taken);
                }
-               taken = (((piece & MASK_L3) << 3) | ((piece & MASK_L5) << 5)) & bb.pieces[BLACK];
+               taken = all_LShift(piece) & bb.pieces[BLACK];
                dest = (taken << 4) & empty;
                if (taken && dest) {
                   if (!add_white_jump(piece, dest, 1, taken))
@@ -457,14 +457,14 @@ int Board::gen_moves(Move * external_movelist, char tt_move){
             dest = (piece >> 4) & empty;
             if (dest) 
                movegen_push(piece, dest, 0, 0);
-            dest = (((piece & MASK_R3) >> 3) | ((piece & MASK_R5) >> 5)) & empty;
+            dest = all_RShift(piece) & empty;
             if (dest)
                movegen_push(piece, dest, 0, 0);
             if (piece & bb.kings) {
                dest = (piece << 4) & empty;
                if (dest)
                   movegen_push(piece, dest, 0, 0);
-               dest = (((piece & MASK_L3) << 3) | ((piece & MASK_L5) << 5)) & empty;
+               dest = all_LShift(piece) & empty;
                if (dest)
                   movegen_push(piece, dest, 0, 0);
             }
@@ -482,12 +482,12 @@ int Board::gen_moves(Move * external_movelist, char tt_move){
          while (jumpers) { // Loop through black pieces that can jump
             piece = jumpers & -jumpers;
             taken = (piece << 4) & bb.pieces[WHITE];
-            dest = (((taken & MASK_L3) << 3) | ((taken & MASK_L5) << 5)) & empty;
+            dest = all_LShift(taken) & empty;
             if (taken && dest) {
                if (!add_black_jump(piece, dest, 1, taken))
                   movegen_push(piece, dest, 1, taken);
             }
-            taken = (((piece & MASK_L3) << 3) | ((piece & MASK_L5) << 5)) & bb.pieces[WHITE];
+            taken = all_LShift(piece) & bb.pieces[WHITE];
             dest = (taken << 4) & empty;
             if (taken && dest) {
                if (!add_black_jump(piece, dest, 1, taken))
@@ -495,12 +495,12 @@ int Board::gen_moves(Move * external_movelist, char tt_move){
             }
             if (piece & bb.kings) {
                taken = (piece >> 4) & bb.pieces[WHITE];
-               dest = (((taken & MASK_R3) >> 3) | ((taken & MASK_R5) >> 5)) & empty;
+               dest = all_RShift(taken) & empty;
                if (taken && dest) {
                   if (!add_black_jump(piece, dest, 1, taken))
                      movegen_push(piece, dest, 1, taken);
                }
-               taken = (((piece & MASK_R3) >> 3) | ((piece & MASK_R5) >> 5)) & bb.pieces[WHITE];
+               taken = all_RShift(piece) & bb.pieces[WHITE];
                dest = (taken >> 4) & empty;
                if (taken && dest) {
                   if (!add_black_jump(piece, dest, 1, taken))
@@ -519,14 +519,14 @@ int Board::gen_moves(Move * external_movelist, char tt_move){
             dest = (piece << 4) & empty;
             if (dest)
                movegen_push(piece, dest, 0, 0);
-            dest = (((piece & MASK_L3) << 3) | ((piece & MASK_L5) << 5)) & empty;
+            dest = all_LShift(piece) & empty;
             if (dest)
                movegen_push(piece, dest, 0, 0);
             if (piece & bb.kings) {
                dest = (piece >> 4) & empty;
                if (dest)
                   movegen_push(piece, dest, 0, 0);
-               dest = (((piece & MASK_R3) >> 3) | ((piece & MASK_R5) >> 5)) & empty;
+               dest = all_RShift(piece) & empty;
                if (dest)
                   movegen_push(piece, dest, 0, 0);
             }
