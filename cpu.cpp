@@ -93,7 +93,7 @@ int cpu::past_pawns(Bitboards &board){
         }
         else{
             /* Increment Paths */
-            paths[BLACK] = all_RShift(paths[BLACK]) | (paths[BLACK] << 4);
+            paths[BLACK] = all_LShift(paths[BLACK]) | (paths[BLACK] << 4);
             paths[BLACK] &= ~(coverage[WHITE] | king_coverage[WHITE]);
 
             /* Increment Coverage */
