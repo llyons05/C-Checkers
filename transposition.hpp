@@ -30,11 +30,11 @@ struct tt_entry{
 class tt_table{
 public:
     tt_entry * tt;
-    int tt_size;
+    uint32_t tt_size;
     int num_entries = 0;
     int fails = 0;
 
-    tt_table(int size);
+    tt_table(uint32_t size);
     int probe(uint64_t boardhash, uint8_t depth, int alpha, int beta, char * best);
     void save(uint64_t boardhash, uint8_t depth, int ply, int val, char flags, uint8_t best);
     ~tt_table() {
@@ -42,7 +42,7 @@ public:
     }
 
 private:
-    int set_size(int size);
+    void set_size(uint32_t size);
 };
 
 struct tt_eval_entry{
@@ -53,9 +53,9 @@ struct tt_eval_entry{
 class tt_eval_table{
 public:
     tt_eval_entry * ett;
-    int ett_size;
+    uint32_t ett_size;
     
-    tt_eval_table(int size);
+    tt_eval_table(uint32_t size);
     int probe(uint64_t boardHash);
     void save(uint64_t boardHash, int val);
     ~tt_eval_table() {
@@ -63,5 +63,5 @@ public:
     }
 
 private:
-    int set_size(int size);
+    void set_size(uint32_t size);
 };

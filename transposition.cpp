@@ -24,7 +24,7 @@ void set_hash_function() {
     hash.HASH_COLOR = rand64();
 }
 
-tt_table::tt_table(int size) {
+tt_table::tt_table(uint32_t size) {
     set_size(size);
 }
 
@@ -33,7 +33,7 @@ Set up the transposition table. Note that this can only
 be called ONE TIME per transposition table otherwise I'm
 pretty sure it causes a memory leak.
 */
-int tt_table::set_size(int size) {
+void tt_table::set_size(uint32_t size) {
     if (size & (size - 1)){
         size--;
         for (int i = 1; i < 32; i=i*2){
@@ -44,13 +44,11 @@ int tt_table::set_size(int size) {
     }
     if (size < sizeof(tt_entry)){
         tt_size = 0;
-        return 0;
+        return;
     }
 
     tt_size = (size / sizeof(tt_entry)) - 1;
     tt = (tt_entry *) malloc(size);
-
-    return 0;
 }
 
 /*
@@ -117,11 +115,11 @@ void tt_table::save(uint64_t boardhash, uint8_t depth, int ply, int val, char fl
     phashe->bestmove = best;
 }
 
-tt_eval_table::tt_eval_table(int size) {
+tt_eval_table::tt_eval_table(uint32_t size) {
     set_size(size);
 }
 
-int tt_eval_table::set_size(int size){
+void tt_eval_table::set_size(uint32_t size){
     if (size & (size - 1)){
         size--;
         for (int i=1; i < 32; i++){
@@ -132,13 +130,11 @@ int tt_eval_table::set_size(int size){
     }
     if (size < sizeof(tt_eval_entry)){
         ett_size = 0;
-        return 0;
+        return;
     }
 
     ett_size = (size / sizeof(tt_eval_entry)) - 1;
     ett = (tt_eval_entry *) malloc(size);
-
-    return 0; 
 }
 
 int tt_eval_table::probe(uint64_t boardHash){
