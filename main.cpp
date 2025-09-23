@@ -12,34 +12,25 @@ int main(){
     std::vector<uint8_t> reversible_moves_history;
 
     int x;
-    int player_color; //0 == red, 1 == black
-    int cpu_depth = 10;
+    int player_color;
     double t = 1;
     bool undone = false;
-    bool is_depth_search = true;
     bool is_cpu_game = false;
 
     std::cout << "Play as Black(0) or White(1) (or 2 to have the cpu play itself): ";
     std::cin >> player_color;
-    std::cout << "\nTime Search(0) or Depth Search(1)?: ";
-    std::cin >> is_depth_search;
 
-    if (is_depth_search){
-        std::cout << "\ncpu max depth: ";
-        std::cin >> cpu_depth;
-    }
-    else{
-        std::cout << "\ntime limit for cpu (seconds): ";
-        std::cin >> t;
-    }
+    std::cout << "\ntime limit for cpu (seconds): ";
+    std::cin >> t;
+
     std::cout << "\n";
 
     if (player_color > 1){
         is_cpu_game = true;
         player_color = 1;
     }
-    cpu cpu1(1 - player_color, cpu_depth);
-    cpu cpu2(player_color, cpu_depth);
+    cpu cpu1(1 - player_color);
+    cpu cpu2(player_color);
 
     Move movelist[MAX_MOVES];
     Move m;
@@ -74,20 +65,9 @@ int main(){
                 }
                 undone = true;
             }
-            // if (is_depth_search){
-            //     m = cpu2.max_depth_search(board, true);
-            // }
-            // else{
-            //     m = cpu2.time_search(board, t);
-            // }
         }
-        else{
-            if (is_depth_search){
-                m = cpu1.max_depth_search(board, true);
-            }
-            else{
-                m = cpu1.time_search(board, t);
-            }
+        else {
+            m = cpu1.time_search(board, t);
         }
 
         if (!undone) {

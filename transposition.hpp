@@ -10,7 +10,8 @@ void set_hash_function();
 struct hash_func{
     uint64_t HASH_FUNCTION[4][32];
     uint64_t HASH_COLOR;
-} extern hash;
+}
+extern hash;
 
 enum ettflag{
     TT_EXACT,
@@ -26,18 +27,22 @@ struct tt_entry{
     uint8_t bestmove;
 };
 
-struct tt_table{
+class tt_table{
+public:
     tt_entry * tt;
     int tt_size;
     int num_entries = 0;
     int fails = 0;
 
-    int set_size(int size);
+    tt_table(int size);
     int probe(uint64_t boardhash, uint8_t depth, int alpha, int beta, char * best);
     void save(uint64_t boardhash, uint8_t depth, int ply, int val, char flags, uint8_t best);
     ~tt_table() {
         free(tt);
     }
+
+private:
+    int set_size(int size);
 };
 
 struct tt_eval_entry{
@@ -45,14 +50,18 @@ struct tt_eval_entry{
     int val;
 };
 
-struct tt_eval_table{
+class tt_eval_table{
+public:
     tt_eval_entry * ett;
     int ett_size;
     
-    int set_size(int size);
+    tt_eval_table(int size);
     int probe(uint64_t boardHash);
     void save(uint64_t boardHash, int val);
     ~tt_eval_table() {
         free(ett);
     }
+
+private:
+    int set_size(int size);
 };

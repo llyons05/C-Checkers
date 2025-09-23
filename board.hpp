@@ -116,10 +116,25 @@ struct Move {
     void print_move_info();
 };
 
-struct Bitboards {
+class Bitboards {
+public:
     uint32_t pieces[2]; // Bitboards of the Black and White pieces
     uint32_t kings;     // Bitboard for kings for both sides
     uint8_t stm;        // Side to move
+
+    Bitboards(){
+        pieces[BLACK] = 0b00000000000000000000111111111111;
+        pieces[WHITE] = 0b11111111111100000000000000000000;
+        kings = 0;
+        stm = BLACK;
+    }
+
+    Bitboards(const Bitboards& other) {
+        pieces[0] = other.pieces[0];
+        pieces[1] = other.pieces[1];
+        kings = other.kings;
+        stm = other.stm;
+    }
 
     inline uint32_t all_pieces() const {
         return pieces[BLACK] | pieces[WHITE];
@@ -213,6 +228,7 @@ struct Board {
         uint64_t rep_stack[REP_STACK_SIZE];
 
         Board();
+        Board(const Board& other);
 
         void reset();
         void print();

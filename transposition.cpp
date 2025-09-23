@@ -24,6 +24,10 @@ void set_hash_function() {
     hash.HASH_COLOR = rand64();
 }
 
+tt_table::tt_table(int size) {
+    set_size(size);
+}
+
 /*
 Set up the transposition table. Note that this can only
 be called ONE TIME per transposition table otherwise I'm
@@ -36,9 +40,9 @@ int tt_table::set_size(int size) {
             size |= size >> i;
         }
         size++;
-        size >>=1;
+        size >>= 1;
     }
-    if (size < 16){
+    if (size < sizeof(tt_entry)){
         tt_size = 0;
         return 0;
     }
@@ -113,6 +117,10 @@ void tt_table::save(uint64_t boardhash, uint8_t depth, int ply, int val, char fl
     phashe->bestmove = best;
 }
 
+tt_eval_table::tt_eval_table(int size) {
+    set_size(size);
+}
+
 int tt_eval_table::set_size(int size){
     if (size & (size - 1)){
         size--;
@@ -122,7 +130,7 @@ int tt_eval_table::set_size(int size){
         size++;
         size >>= 1;
     }
-    if (size < 16){
+    if (size < sizeof(tt_eval_entry)){
         ett_size = 0;
         return 0;
     }

@@ -15,6 +15,6 @@ This class is for testing new features for the cpu
 */
 class new_cpu : public cpu {
 public:
-    new_cpu(int cpu_color = 0, int cpu_depth = 10) : 
-    cpu(cpu_color, cpu_depth, 0x4000000, 0x4000000) {}
+    new_cpu(int cpu_color) : 
+    cpu(cpu_color) {}
 };

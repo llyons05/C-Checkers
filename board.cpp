@@ -23,16 +23,541 @@
 */
 
 Board::Board() {
-   bb.pieces[BLACK] = 0b00000000000000000000111111111111;
-   bb.pieces[WHITE] = 0b11111111111100000000000000000000;
-   bb.kings = 0;
-   bb.stm = BLACK;
+   reset();
+}
 
+//copy constructor
+Board::Board(const Board& other) {
+   bb = Bitboards(other.bb);
+   has_takes = other.has_takes;
+   reversible_moves = other.reversible_moves;
+   legal_move_count = other.legal_move_count;
+   total_moves = other.total_moves;
+   for (int i = 0; i < REP_STACK_SIZE; i++)
+      rep_stack[i] = other.rep_stack[i];
+   set_flags();
+}
+
+/* Resets the board to the starting position. */
+void Board::reset() {
+   bb = Bitboards();
+   
    reversible_moves = 0;
    total_moves = 0;
    has_takes = false;
    set_flags();
 }
+
+/* 
+Calculates a hash key for the board
+
+@return 
+   the hash key
+*/
+uint64_t Board::calc_hash_key() {
+   uint64_t checkSum = 0;
+   for (int i = 0; i < 32; i++){
+      if (S[i] & bb.all_pieces()){
+         checkSum ^= hash.HASH_FUNCTION[bb.piece_on_square(i)][i];
+      }
+   }
+   if(bb.stm){
+      checkSum ^= hash.HASH_COLOR;
+   }
+   return checkSum;
+}
+
+/* Ensure the hash_key of the board and all piece counters are correct */
+void Board::set_flags(){
+   hash_key = calc_hash_key();
+   piece_count[0] = 0;
+   piece_count[1] = 0;
+   king_count[0] = 0;
+   king_count[1] = 0;
+   
+   for (int i = 0; i < 32; i++){
+      ePieceType pt = bb.piece_on_square(i);
+      if (pt != NO_PIECE) {
+         piece_count[pt & 1]++;
+         if (pt > WHITE_PIECE) king_count[pt & 1]++;
+      }
+   }
+}
+
+/*
+Plays a move on the board
+
+@param move 
+   The move to be played
+*/
+void Board::push_move(Move &move) {
+   uint8_t to = move.to;
+   uint8_t from = move.from;
+   uint32_t taken = move.taken_bb;
+   uint8_t piecetype = move.piecetype;
+   
+   /* Increment the move counter and the counter for consecutive reversible moves */
+   reversible_moves = ((piecetype <= WHITE_PIECE) || (taken)) ? 0 : reversible_moves+1;
+   total_moves++;
+   
+   /* Updates the hash key of the board */
+   hash_key ^= hash.HASH_COLOR;
+   hash_key ^= hash.HASH_FUNCTION[piecetype][from];
+   
+   /* Loop through taken pieces and do all necessary handling */
+   while (taken) {
+      uint32_t piece = taken & -taken;
+      uint8_t taken_piecetype = (!bb.stm) + 2*(!!(piece & bb.kings));
+      
+      hash_key ^= hash.HASH_FUNCTION[taken_piecetype][binary_to_square(piece)]; // Update the board's hash for the removed piece
+      piece_count[!bb.stm]--; // Decrement the piece counter
+      if (taken_piecetype > WHITE_PIECE) // If the piece was a king, decrement the king counter
+         king_count[!bb.stm]--;
+      
+      taken &= taken - 1;
+   }
+   
+   bb.pieces[bb.stm] ^= S[from];        // Remove the piece that is being moved from its start square
+   bb.pieces[bb.stm] |= S[to];          // Put it back down on the square it lands
+   bb.pieces[!bb.stm] ^= move.taken_bb; // Remove all taken pieces from the board
+   bb.kings &= ~move.taken_bb;          // Remove all taken pieces from the king bitboard
+   
+   if (move.is_promo) {
+      piecetype += 2;       // Change the piecetype to a king
+      king_count[bb.stm]++; // Increment King counter
+      bb.kings |= S[to];    // Add the piece to the king bitboard
+   }
+   else if (move.is_king()) {
+      bb.kings ^= S[from];  // Remove the piece that is being moved from its start square on the king bitboard
+      bb.kings |= S[to];    // Put it back down on the square it lands
+   }
+   
+   bb.stm = !bb.stm; // Switch the side to move
+   
+   hash_key ^= hash.HASH_FUNCTION[piecetype][to]; // Update the board's hash
+   
+   /* Updates the repetition tracker */
+   rep_stack[total_moves%REP_STACK_SIZE] = hash_key; // Add the hash to the repetition list
+}
+
+/*
+Undoes a move
+
+@param move 
+   Move to be undone
+@param previous_kings 
+   The king bitboard from the previous position
+*/
+void Board::undo(Move &move, uint32_t previous_kings, uint8_t prev_reversible_moves) {
+   reversible_moves = prev_reversible_moves;
+   total_moves--;
+   
+   uint8_t to = move.to;
+   uint8_t from = move.from;
+   
+   uint8_t piecetype = move.piecetype;
+   hash_key ^= hash.HASH_COLOR;
+   hash_key ^= hash.HASH_FUNCTION[piecetype][from];
+   
+   uint32_t taken = move.taken_bb;
+   while (taken) {
+      uint32_t piece = taken & -taken;
+      uint8_t taken_piecetype = bb.stm;
+      if (piece & previous_kings) {
+         taken_piecetype += 2;
+         king_count[bb.stm]++;
+      }
+      
+      hash_key ^= hash.HASH_FUNCTION[taken_piecetype][binary_to_square(piece)];
+      piece_count[bb.stm]++;
+      taken &= taken - 1;
+   }
+   
+   bb.pieces[bb.stm] |= move.taken_bb;
+   bb.kings |= previous_kings;
+   bb.pieces[!bb.stm] ^= S[to];
+   bb.pieces[!bb.stm] |= S[from];
+   
+   if (move.is_promo) {
+      bb.kings ^= S[to];
+      piecetype += 2;
+      king_count[!bb.stm]--;
+   }
+   else if (move.is_king()) {
+      bb.kings ^= S[to];
+      bb.kings |= S[from];
+   }
+   
+   bb.stm = !bb.stm;
+   
+   hash_key ^= hash.HASH_FUNCTION[piecetype][to];
+}
+
+/*
+If the "jumper" can jump, add the jump to the movelist and return true. Return false if it cannot jump. Use this method for black pieces.
+
+@param start_square
+   Where the jump initially started
+@param current_square
+   Where the piece jumping currently is in its jump
+@param captures
+   How many pieces this jump has taken so far
+@param taken_bb
+   A bitboard of all the pieces that this jump has taken so far
+
+@return
+   true if the piece can jump again, false if the piece cannot jump again
+*/
+bool Board::add_black_jump(uint32_t start_square, uint32_t current_square, uint8_t captures, uint32_t taken_bb){
+   const uint32_t temp_black = (bb.pieces[BLACK] ^ start_square) | current_square;
+   const uint32_t temp_white = bb.pieces[WHITE] ^ taken_bb;
+   const uint32_t empty = ~(temp_black | temp_white);
+   const int new_captures = captures + 1;
+   uint32_t taken, dest;
+   
+   bool result = false;
+   
+   // Does a quick check to see whether this piece can even jump
+   uint32_t temp = (empty >> 4) & temp_white;
+   uint32_t jump_check = all_RShift(temp);
+   temp = all_RShift(empty) & temp_white;
+   jump_check |= (temp >> 4);
+   
+   if (start_square & bb.kings) {
+      /* Finish checking if this piece can move */
+      temp = (empty << 4) & temp_white;
+      jump_check |= all_LShift(temp);
+      temp = all_LShift(empty) & temp_white;
+      jump_check |= (temp << 4);
+      if (!(current_square & jump_check)) return false;
+      
+      taken = (current_square >> 4) & temp_white;
+      dest = all_RShift(taken) & empty;
+      if (taken && dest) {
+         if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
+            movegen_push(start_square, dest, new_captures, taken_bb | taken);
+         result = true;
+      }
+      taken = all_RShift(current_square) & temp_white;
+      dest = (taken >> 4) & empty;
+      if (taken && dest) {
+         if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
+            movegen_push(start_square, dest, new_captures, taken_bb | taken);
+         result = true;
+      }
+   }
+   else
+   if (!(current_square & jump_check)) return false;
+   
+   taken = (current_square << 4) & temp_white;
+   dest = all_LShift(taken) & empty;
+   if (taken && dest) {
+      if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
+         movegen_push(start_square, dest, new_captures, taken_bb | taken);
+      result = true;
+   }
+   taken = all_LShift(current_square) & temp_white;
+   dest = (taken << 4) & empty;
+   if (taken && dest) {
+      if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
+         movegen_push(start_square, dest, new_captures, taken_bb | taken);
+      result = true;
+   }
+   return result;
+}
+
+/*
+If the "jumper" can jump, add the jump to the movelist and return true. Return false if it cannot jump. Use this method for white pieces.
+
+@param start_square
+   Where the jump initially started
+@param current_square
+   Where the piece jumping currently is in its jump
+@param captures
+   How many pieces this jump has taken so far
+@param taken_bb
+   A bitboard of all the pieces that this jump has taken so far
+
+@return
+   true if the piece can jump again, false if the piece cannot jump again
+*/
+bool Board::add_white_jump(uint32_t start_square, uint32_t current_square, uint8_t captures, uint32_t taken_bb){
+   const uint32_t temp_black = bb.pieces[BLACK] ^ taken_bb;
+   const uint32_t temp_white = (bb.pieces[WHITE] ^ start_square) | current_square;
+   const uint32_t empty = ~(temp_black | temp_white);
+   const int new_captures = captures + 1;
+   uint32_t taken, dest;
+   
+   bool result = false;
+   
+   // Does a quick check to see whether this piece can even jump
+   uint32_t temp = (empty << 4) & temp_black;
+   uint32_t jump_check = all_LShift(temp);
+   temp = all_LShift(empty) & temp_black;
+   jump_check |= (temp << 4);
+   
+   if (start_square & bb.kings){
+      /* Finish checking if this piece can move */
+      temp = (empty >> 4) & temp_black;
+      jump_check |= all_RShift(temp);
+      temp = all_RShift(empty) & temp_black;
+      jump_check |= (temp >> 4);
+      
+      if (!(current_square & jump_check)) return false;
+      
+      taken = (current_square << 4) & temp_black;
+      dest = all_LShift(taken) & empty;
+      if (taken && dest) {
+         if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
+            movegen_push(start_square, dest, new_captures, taken_bb | taken);
+         result = true;
+      }
+      taken = all_LShift(current_square) & temp_black;
+      dest = (taken << 4) & empty;
+      if (taken && dest) {
+         if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
+            movegen_push(start_square, dest, new_captures, taken_bb | taken);
+         result = true;
+      }
+   }
+   else
+   if (!(current_square & jump_check)) return false;
+   
+   taken = (current_square >> 4) & temp_black;
+   dest = all_RShift(taken) & empty;
+   if (taken && dest) {
+      if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
+         movegen_push(start_square, dest, new_captures, taken_bb | taken);
+      result = true;
+   }
+   taken = all_RShift(current_square) & temp_black;
+   dest = (taken >> 4) & empty;
+   if (taken && dest) {
+      if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
+         movegen_push(start_square, dest, new_captures, taken_bb | taken);
+      result = true;
+   }
+   return result;
+}
+
+/*
+Generates all legal moves and puts them in the external_movelist array that is passed in.
+@param external_movelist
+   an array that will be populated by all the legal moves
+@param tt_move
+   the id of the best move fetched from the transposition table
+@return
+   the number of legal moves in the position
+*/
+int Board::gen_moves(Move * external_movelist, char tt_move){
+   has_takes = false;
+   legal_move_count = 0;
+   movelist = external_movelist;
+   const uint32_t empty = ~(bb.all_pieces());
+   
+   if (bb.stm) { // White Moves
+      uint32_t jumpers = bb.get_white_jumpers();
+      if (jumpers) { // White Jumps
+         has_takes = true;
+         uint32_t piece, taken, dest;
+         
+         while (jumpers) { //Loop through white pieces that can jump
+            piece = jumpers & -jumpers;
+            taken = (piece >> 4) & bb.pieces[BLACK];
+            dest = all_RShift(taken) & empty;
+            if (taken && dest) {
+               if (!add_white_jump(piece, dest, 1, taken))
+                  movegen_push(piece, dest, 1, taken);
+            }
+            taken = all_RShift(piece) & bb.pieces[BLACK];
+            dest = (taken >> 4) & empty;
+            if (taken && dest) {
+               if (!add_white_jump(piece, dest, 1, taken))
+                  movegen_push(piece, dest, 1, taken);
+            }
+            if (piece & bb.kings) {
+               taken = (piece << 4) & bb.pieces[BLACK];
+               dest = all_LShift(taken) & empty;
+               if (taken && dest) {
+                  if (!add_white_jump(piece, dest, 1, taken))
+                     movegen_push(piece, dest, 1, taken);
+               }
+               taken = all_LShift(piece) & bb.pieces[BLACK];
+               dest = (taken << 4) & empty;
+               if (taken && dest) {
+                  if (!add_white_jump(piece, dest, 1, taken))
+                     movegen_push(piece, dest, 1, taken);
+               }
+            }
+            jumpers &= jumpers-1;
+         } // White Jumpers Loop
+      } // White Jump Moves
+      else { // White Non-Capture Moves
+         uint32_t movers = bb.get_white_movers();
+         uint32_t piece, dest;
+         while (movers) { // Loop Through Non-Captures
+            piece = movers & -movers;
+            dest = (piece >> 4) & empty;
+            if (dest) 
+               movegen_push(piece, dest, 0, 0);
+            dest = all_RShift(piece) & empty;
+            if (dest)
+               movegen_push(piece, dest, 0, 0);
+            if (piece & bb.kings) {
+               dest = (piece << 4) & empty;
+               if (dest)
+                  movegen_push(piece, dest, 0, 0);
+               dest = all_LShift(piece) & empty;
+               if (dest)
+                  movegen_push(piece, dest, 0, 0);
+            }
+            movers &= movers-1;
+         } // White Non-Captures Loop
+      } // White Non-Captures
+   } // White Moves
+   
+   else { // Black Moves
+      uint32_t jumpers = bb.get_black_jumpers();
+      if (jumpers) { // Black Jumps
+         has_takes = true;
+         uint32_t piece, taken, dest;
+         
+         while (jumpers) { // Loop through black pieces that can jump
+            piece = jumpers & -jumpers;
+            taken = (piece << 4) & bb.pieces[WHITE];
+            dest = all_LShift(taken) & empty;
+            if (taken && dest) {
+               if (!add_black_jump(piece, dest, 1, taken))
+                  movegen_push(piece, dest, 1, taken);
+            }
+            taken = all_LShift(piece) & bb.pieces[WHITE];
+            dest = (taken << 4) & empty;
+            if (taken && dest) {
+               if (!add_black_jump(piece, dest, 1, taken))
+                  movegen_push(piece, dest, 1, taken);
+            }
+            if (piece & bb.kings) {
+               taken = (piece >> 4) & bb.pieces[WHITE];
+               dest = all_RShift(taken) & empty;
+               if (taken && dest) {
+                  if (!add_black_jump(piece, dest, 1, taken))
+                     movegen_push(piece, dest, 1, taken);
+               }
+               taken = all_RShift(piece) & bb.pieces[WHITE];
+               dest = (taken >> 4) & empty;
+               if (taken && dest) {
+                  if (!add_black_jump(piece, dest, 1, taken))
+                     movegen_push(piece, dest, 1, taken);
+               }
+            }
+            jumpers &= jumpers-1;
+         } // Black Jumpers Loop
+      } // Black Jump Moves
+      
+      else { // Black Non-Captures
+         uint32_t movers = bb.get_black_movers();
+         uint32_t piece, dest;
+         while (movers) { // Loop through Non-Captures
+            piece = movers & -movers;
+            dest = (piece << 4) & empty;
+            if (dest)
+               movegen_push(piece, dest, 0, 0);
+            dest = all_LShift(piece) & empty;
+            if (dest)
+               movegen_push(piece, dest, 0, 0);
+            if (piece & bb.kings) {
+               dest = (piece >> 4) & empty;
+               if (dest)
+                  movegen_push(piece, dest, 0, 0);
+               dest = all_RShift(piece) & empty;
+               if (dest)
+                  movegen_push(piece, dest, 0, 0);
+            }
+            movers &= movers-1;
+         } // Black Non-Captures Loop
+      } // Black Non-Captures
+   } // Black Moves
+   
+   /* If a preferred best move is passed in, boost the score of that move. */
+   if ((tt_move != -1) && (tt_move < legal_move_count)) external_movelist[tt_move].score = HASH_SORT;
+   
+   return legal_move_count;
+}
+
+/*
+Get a random move. Note that the random
+seed must be set before this is called.
+
+@return
+   A random legal move
+*/
+Move Board::get_random_move(){
+   Move arr[MAX_MOVES];
+   gen_moves(arr, (char)-1);
+   int index = rand() % legal_move_count;
+   return arr[index];
+}
+
+/*
+Sets the board to a random position by playing "moves_to_play" random moves.
+Note that the random seed must be set before calling this method.
+
+@param moves_to_play
+   How many moves should be played to get to the random position
+*/
+void Board::set_random_pos(int moves_to_play){
+   for (int i = 0; i < moves_to_play; i++){
+      Move m = get_random_move();
+      push_move(m);
+   }
+}
+
+/*
+Checks if the current position has a winner. Use check_repetition for checking draws.
+
+@return
+   an int that represents the result. If the game is not over, return 0. A Black win returns 1, a White win returns 2.
+*/
+int Board::check_win() const{
+   if (legal_move_count == 0){
+      //                         (1)             (0)
+      return 2 - bb.stm; // 2 - WHITE == 1, 2 - BLACK == 2
+   }
+   return 0; //otherwise, the game is not over
+}
+
+/*
+Checks whether the current position is a draw by repetition or 50 move rule.
+
+@return
+   true if the current position has been repeated at least once or if 
+   the game is a draw by 50 move rule (50 moves without take or promotion)
+*/
+bool Board::check_repetition() const{
+   if (!bb.kings || (reversible_moves <= 2)) return false;
+   if (reversible_moves >= DRAW_MOVE_RULE) return true;
+   
+   uint32_t i = total_moves - reversible_moves;
+   if (reversible_moves & 1) i++;
+   
+   for(; i < total_moves; i+=2){
+      if (rep_stack[i%REP_STACK_SIZE] == hash_key) return true;
+   }
+   return false;
+}
+
+
+/* Prints the start and end square of the move, as well as any taken squares */
+void Move::print_move_info() {
+   std::cout << (int)from;
+   uint32_t taken = taken_bb;
+   while (taken) {
+      std::cout << "-" << binary_to_square(taken & -taken);
+      taken &= taken-1;
+   }
+   std::cout << "-" << (int)to;
+}
+
 
 /* Prints a representation of the board to the console */
 void Board::print() {
@@ -91,525 +616,4 @@ void Board::print() {
          }
       }
    }
-}
-
-/* Resets the board to the starting position. */
-void Board::reset() {
-   bb.pieces[BLACK] = 0b00000000000000000000111111111111;
-   bb.pieces[WHITE] = 0b11111111111100000000000000000000;
-   bb.kings = 0;
-   bb.stm = BLACK;
-
-   reversible_moves = 0;
-   has_takes = false;
-   set_flags();
-}
-
-/* 
-Calculates a hash key for the board
-
-@return 
-   the hash key
- */
-uint64_t Board::calc_hash_key() {
-   uint64_t checkSum = 0;
-   for (int i = 0; i < 32; i++){
-      if (S[i] & bb.all_pieces()){
-         checkSum ^= hash.HASH_FUNCTION[bb.piece_on_square(i)][i];
-      }
-   }
-   if(bb.stm){
-      checkSum ^= hash.HASH_COLOR;
-   }
-   return checkSum;
-}
-
-/* Ensure the hash_key of the board and all piece counters are correct */
-void Board::set_flags(){
-   hash_key = calc_hash_key();
-   piece_count[0] = 0;
-   piece_count[1] = 0;
-   king_count[0] = 0;
-   king_count[1] = 0;
-
-   for (int i = 0; i < 32; i++){
-      ePieceType pt = bb.piece_on_square(i);
-      if (pt != NO_PIECE) {
-         piece_count[pt & 1]++;
-         if (pt > WHITE_PIECE) king_count[pt & 1]++;
-      }
-   }
-}
-
-/*
-Plays a move on the board
-
-@param move 
-   The move to be played
-*/
-void Board::push_move(Move &move) {
-   uint8_t to = move.to;
-   uint8_t from = move.from;
-   uint32_t taken = move.taken_bb;
-   uint8_t piecetype = move.piecetype;
-
-   /* Increment the move counter and the counter for consecutive reversible moves */
-   reversible_moves = ((piecetype <= WHITE_PIECE) || (taken)) ? 0 : reversible_moves+1;
-   total_moves++;
-
-   /* Updates the hash key of the board */
-   hash_key ^= hash.HASH_COLOR;
-   hash_key ^= hash.HASH_FUNCTION[piecetype][from];
-
-   /* Loop through taken pieces and do all necessary handling */
-   while (taken) {
-      uint32_t piece = taken & -taken;
-      uint8_t taken_piecetype = (!bb.stm) + 2*(!!(piece & bb.kings));
-
-      hash_key ^= hash.HASH_FUNCTION[taken_piecetype][binary_to_square(piece)]; // Update the board's hash for the removed piece
-      piece_count[!bb.stm]--; // Decrement the piece counter
-      if (taken_piecetype > WHITE_PIECE) // If the piece was a king, decrement the king counter
-         king_count[!bb.stm]--;
-
-      taken &= taken - 1;
-   }
-
-   bb.pieces[bb.stm] ^= S[from];        // Remove the piece that is being moved from its start square
-   bb.pieces[bb.stm] |= S[to];          // Put it back down on the square it lands
-   bb.pieces[!bb.stm] ^= move.taken_bb; // Remove all taken pieces from the board
-   bb.kings &= ~move.taken_bb;          // Remove all taken pieces from the king bitboard
-
-   if (move.is_promo) {
-      piecetype += 2;       // Change the piecetype to a king
-      king_count[bb.stm]++; // Increment King counter
-      bb.kings |= S[to];    // Add the piece to the king bitboard
-   }
-   else if (move.is_king()) {
-      bb.kings ^= S[from];  // Remove the piece that is being moved from its start square on the king bitboard
-      bb.kings |= S[to];    // Put it back down on the square it lands
-   }
-
-   bb.stm = !bb.stm; // Switch the side to move
-
-   hash_key ^= hash.HASH_FUNCTION[piecetype][to]; // Update the board's hash
-
-   /* Updates the repetition tracker */
-   rep_stack[total_moves%REP_STACK_SIZE] = hash_key; // Add the hash to the repetition list
-}
-
-/*
-Undoes a move
-
-@param move 
-   Move to be undone
-@param previous_kings 
-   The king bitboard from the previous position
-*/
-void Board::undo(Move &move, uint32_t previous_kings, uint8_t prev_reversible_moves) {
-   reversible_moves = prev_reversible_moves;
-   total_moves--;
-
-   uint8_t to = move.to;
-   uint8_t from = move.from;
-
-   uint8_t piecetype = move.piecetype;
-   hash_key ^= hash.HASH_COLOR;
-   hash_key ^= hash.HASH_FUNCTION[piecetype][from];
-
-   uint32_t taken = move.taken_bb;
-   while (taken) {
-      uint32_t piece = taken & -taken;
-      uint8_t taken_piecetype = bb.stm;
-      if (piece & previous_kings) {
-         taken_piecetype += 2;
-         king_count[bb.stm]++;
-      }
-
-      hash_key ^= hash.HASH_FUNCTION[taken_piecetype][binary_to_square(piece)];
-      piece_count[bb.stm]++;
-      taken &= taken - 1;
-   }
-
-   bb.pieces[bb.stm] |= move.taken_bb;
-   bb.kings |= previous_kings;
-   bb.pieces[!bb.stm] ^= S[to];
-   bb.pieces[!bb.stm] |= S[from];
-
-   if (move.is_promo) {
-      bb.kings ^= S[to];
-      piecetype += 2;
-      king_count[!bb.stm]--;
-   }
-   else if (move.is_king()) {
-      bb.kings ^= S[to];
-      bb.kings |= S[from];
-   }
-
-   bb.stm = !bb.stm;
-
-   hash_key ^= hash.HASH_FUNCTION[piecetype][to];
-}
-
-/*
-If the "jumper" can jump, add the jump to the movelist and return true. Return false if it cannot jump. Use this method for black pieces.
-
-@param start_square
-   Where the jump initially started
-@param current_square
-   Where the piece jumping currently is in its jump
-@param captures
-   How many pieces this jump has taken so far
-@param taken_bb
-   A bitboard of all the pieces that this jump has taken so far
-
-@return
-   true if the piece can jump again, false if the piece cannot jump again
-*/
-bool Board::add_black_jump(uint32_t start_square, uint32_t current_square, uint8_t captures, uint32_t taken_bb){
-   const uint32_t temp_black = (bb.pieces[BLACK] ^ start_square) | current_square;
-   const uint32_t temp_white = bb.pieces[WHITE] ^ taken_bb;
-   const uint32_t empty = ~(temp_black | temp_white);
-   const int new_captures = captures + 1;
-   uint32_t taken, dest;
-
-   bool result = false;
-
-   // Does a quick check to see whether this piece can even jump
-   uint32_t temp = (empty >> 4) & temp_white;
-   uint32_t jump_check = all_RShift(temp);
-   temp = all_RShift(empty) & temp_white;
-   jump_check |= (temp >> 4);
-
-   if (start_square & bb.kings) {
-      /* Finish checking if this piece can move */
-      temp = (empty << 4) & temp_white;
-      jump_check |= all_LShift(temp);
-      temp = all_LShift(empty) & temp_white;
-      jump_check |= (temp << 4);
-      if (!(current_square & jump_check)) return false;
-
-      taken = (current_square >> 4) & temp_white;
-      dest = all_RShift(taken) & empty;
-      if (taken && dest) {
-         if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
-            movegen_push(start_square, dest, new_captures, taken_bb | taken);
-         result = true;
-      }
-      taken = all_RShift(current_square) & temp_white;
-      dest = (taken >> 4) & empty;
-      if (taken && dest) {
-         if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
-            movegen_push(start_square, dest, new_captures, taken_bb | taken);
-         result = true;
-      }
-   }
-   else
-      if (!(current_square & jump_check)) return false;
-
-   taken = (current_square << 4) & temp_white;
-   dest = all_LShift(taken) & empty;
-   if (taken && dest) {
-      if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
-         movegen_push(start_square, dest, new_captures, taken_bb | taken);
-      result = true;
-   }
-   taken = all_LShift(current_square) & temp_white;
-   dest = (taken << 4) & empty;
-   if (taken && dest) {
-      if (!add_black_jump(start_square, dest, new_captures, taken_bb | taken))
-         movegen_push(start_square, dest, new_captures, taken_bb | taken);
-      result = true;
-   }
-   return result;
-}
-
-/*
-If the "jumper" can jump, add the jump to the movelist and return true. Return false if it cannot jump. Use this method for white pieces.
-
-@param start_square
-   Where the jump initially started
-@param current_square
-   Where the piece jumping currently is in its jump
-@param captures
-   How many pieces this jump has taken so far
-@param taken_bb
-   A bitboard of all the pieces that this jump has taken so far
-
-@return
-   true if the piece can jump again, false if the piece cannot jump again
-*/
-bool Board::add_white_jump(uint32_t start_square, uint32_t current_square, uint8_t captures, uint32_t taken_bb){
-   const uint32_t temp_black = bb.pieces[BLACK] ^ taken_bb;
-   const uint32_t temp_white = (bb.pieces[WHITE] ^ start_square) | current_square;
-   const uint32_t empty = ~(temp_black | temp_white);
-   const int new_captures = captures + 1;
-   uint32_t taken, dest;
-
-   bool result = false;
-
-   // Does a quick check to see whether this piece can even jump
-   uint32_t temp = (empty << 4) & temp_black;
-   uint32_t jump_check = all_LShift(temp);
-   temp = all_LShift(empty) & temp_black;
-   jump_check |= (temp << 4);
-
-   if (start_square & bb.kings){
-      /* Finish checking if this piece can move */
-      temp = (empty >> 4) & temp_black;
-      jump_check |= all_RShift(temp);
-      temp = all_RShift(empty) & temp_black;
-      jump_check |= (temp >> 4);
-
-      if (!(current_square & jump_check)) return false;
-      
-      taken = (current_square << 4) & temp_black;
-      dest = all_LShift(taken) & empty;
-      if (taken && dest) {
-         if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
-            movegen_push(start_square, dest, new_captures, taken_bb | taken);
-         result = true;
-      }
-      taken = all_LShift(current_square) & temp_black;
-      dest = (taken << 4) & empty;
-      if (taken && dest) {
-         if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
-            movegen_push(start_square, dest, new_captures, taken_bb | taken);
-         result = true;
-      }
-   }
-   else
-      if (!(current_square & jump_check)) return false;
-   
-   taken = (current_square >> 4) & temp_black;
-   dest = all_RShift(taken) & empty;
-   if (taken && dest) {
-      if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
-         movegen_push(start_square, dest, new_captures, taken_bb | taken);
-      result = true;
-   }
-   taken = all_RShift(current_square) & temp_black;
-   dest = (taken >> 4) & empty;
-   if (taken && dest) {
-      if (!add_white_jump(start_square, dest, new_captures, taken_bb | taken))
-         movegen_push(start_square, dest, new_captures, taken_bb | taken);
-      result = true;
-   }
-   return result;
-}
-
-/*
-Generates all legal moves and puts them in the external_movelist array that is passed in.
-@param external_movelist
-   an array that will be populated by all the legal moves
-@param tt_move
-   the id of the best move fetched from the transposition table
-@return
-   the number of legal moves in the position
-*/
-int Board::gen_moves(Move * external_movelist, char tt_move){
-   has_takes = false;
-   legal_move_count = 0;
-   movelist = external_movelist;
-   const uint32_t empty = ~(bb.all_pieces());
-
-   if (bb.stm) { // White Moves
-      uint32_t jumpers = bb.get_white_jumpers();
-      if (jumpers) { // White Jumps
-         has_takes = true;
-         uint32_t piece, taken, dest;
-
-         while (jumpers) { //Loop through white pieces that can jump
-            piece = jumpers & -jumpers;
-            taken = (piece >> 4) & bb.pieces[BLACK];
-            dest = all_RShift(taken) & empty;
-            if (taken && dest) {
-               if (!add_white_jump(piece, dest, 1, taken))
-                  movegen_push(piece, dest, 1, taken);
-            }
-            taken = all_RShift(piece) & bb.pieces[BLACK];
-            dest = (taken >> 4) & empty;
-            if (taken && dest) {
-               if (!add_white_jump(piece, dest, 1, taken))
-                  movegen_push(piece, dest, 1, taken);
-            }
-            if (piece & bb.kings) {
-               taken = (piece << 4) & bb.pieces[BLACK];
-               dest = all_LShift(taken) & empty;
-               if (taken && dest) {
-                  if (!add_white_jump(piece, dest, 1, taken))
-                     movegen_push(piece, dest, 1, taken);
-               }
-               taken = all_LShift(piece) & bb.pieces[BLACK];
-               dest = (taken << 4) & empty;
-               if (taken && dest) {
-                  if (!add_white_jump(piece, dest, 1, taken))
-                     movegen_push(piece, dest, 1, taken);
-               }
-            }
-            jumpers &= jumpers-1;
-         } // White Jumpers Loop
-      } // White Jump Moves
-      else { // White Non-Capture Moves
-         uint32_t movers = bb.get_white_movers();
-         uint32_t piece, dest;
-         while (movers) { // Loop Through Non-Captures
-            piece = movers & -movers;
-            dest = (piece >> 4) & empty;
-            if (dest) 
-               movegen_push(piece, dest, 0, 0);
-            dest = all_RShift(piece) & empty;
-            if (dest)
-               movegen_push(piece, dest, 0, 0);
-            if (piece & bb.kings) {
-               dest = (piece << 4) & empty;
-               if (dest)
-                  movegen_push(piece, dest, 0, 0);
-               dest = all_LShift(piece) & empty;
-               if (dest)
-                  movegen_push(piece, dest, 0, 0);
-            }
-            movers &= movers-1;
-         } // White Non-Captures Loop
-      } // White Non-Captures
-   } // White Moves
-
-   else { // Black Moves
-      uint32_t jumpers = bb.get_black_jumpers();
-      if (jumpers) { // Black Jumps
-         has_takes = true;
-         uint32_t piece, taken, dest;
-
-         while (jumpers) { // Loop through black pieces that can jump
-            piece = jumpers & -jumpers;
-            taken = (piece << 4) & bb.pieces[WHITE];
-            dest = all_LShift(taken) & empty;
-            if (taken && dest) {
-               if (!add_black_jump(piece, dest, 1, taken))
-                  movegen_push(piece, dest, 1, taken);
-            }
-            taken = all_LShift(piece) & bb.pieces[WHITE];
-            dest = (taken << 4) & empty;
-            if (taken && dest) {
-               if (!add_black_jump(piece, dest, 1, taken))
-                  movegen_push(piece, dest, 1, taken);
-            }
-            if (piece & bb.kings) {
-               taken = (piece >> 4) & bb.pieces[WHITE];
-               dest = all_RShift(taken) & empty;
-               if (taken && dest) {
-                  if (!add_black_jump(piece, dest, 1, taken))
-                     movegen_push(piece, dest, 1, taken);
-               }
-               taken = all_RShift(piece) & bb.pieces[WHITE];
-               dest = (taken >> 4) & empty;
-               if (taken && dest) {
-                  if (!add_black_jump(piece, dest, 1, taken))
-                     movegen_push(piece, dest, 1, taken);
-               }
-            }
-            jumpers &= jumpers-1;
-         } // Black Jumpers Loop
-      } // Black Jump Moves
-
-      else { // Black Non-Captures
-         uint32_t movers = bb.get_black_movers();
-         uint32_t piece, dest;
-         while (movers) { // Loop through Non-Captures
-            piece = movers & -movers;
-            dest = (piece << 4) & empty;
-            if (dest)
-               movegen_push(piece, dest, 0, 0);
-            dest = all_LShift(piece) & empty;
-            if (dest)
-               movegen_push(piece, dest, 0, 0);
-            if (piece & bb.kings) {
-               dest = (piece >> 4) & empty;
-               if (dest)
-                  movegen_push(piece, dest, 0, 0);
-               dest = all_RShift(piece) & empty;
-               if (dest)
-                  movegen_push(piece, dest, 0, 0);
-            }
-            movers &= movers-1;
-         } // Black Non-Captures Loop
-      } // Black Non-Captures
-   } // Black Moves
-
-   /* If a preferred best move is passed in, boost the score of that move. */
-   if ((tt_move != -1) && (tt_move < legal_move_count)) external_movelist[tt_move].score = HASH_SORT;
-
-   return legal_move_count;
-}
-
-/*
-Get a random move. Note that the random
-seed must be set before this is called.
-
-@return
-   A random legal move
-*/
-Move Board::get_random_move(){
-   Move arr[MAX_MOVES];
-   gen_moves(arr, (char)-1);
-   int index = rand() % legal_move_count;
-   return arr[index];
-}
-
-/*
-Sets the board to a random position by playing "moves_to_play" random moves.
-Note that the random seed must be set before calling this method.
-
-@param moves_to_play
-   How many moves should be played to get to the random position
-*/
-void Board::set_random_pos(int moves_to_play){
-   for (int i = 0; i < moves_to_play; i++){
-      Move m = get_random_move();
-      push_move(m);
-   }
-}
-
-/*
-Checks if the current position has a winner. Use check_repetition for checking draws.
-
-@return
-   an int that represents the result. If the game is not over, return 0. A Black win returns 1, a White win returns 2.
-*/
-int Board::check_win() const{
-   if (legal_move_count == 0){
-      //                         (1)             (0)
-      return 2 - bb.stm; // 2 - WHITE == 1, 2 - BLACK == 2
-   }
-   return 0; //otherwise, the game is not over
-}
-
-/*
-Checks whether the current position is a draw by repetition or 50 move rule.
-
-@return
-   true if the current position has been repeated at least once or if 
-   the game is a draw by 50 move rule (50 moves without take or promotion)
-*/
-bool Board::check_repetition() const{
-   if (!bb.kings || (reversible_moves <= 2)) return false;
-   if (reversible_moves >= DRAW_MOVE_RULE) return true;
-
-   uint32_t i = total_moves - reversible_moves;
-   if (reversible_moves & 1) i++;
-
-   for(; i < total_moves; i+=2){
-      if (rep_stack[i%REP_STACK_SIZE] == hash_key) return true;
-   }
-   return false;
-}
-
-/* Prints the start and end square of the move, as well as any taken squares */
-void Move::print_move_info() {
-   std::cout << (int)from;
-   uint32_t taken = taken_bb;
-   while (taken) {
-      std::cout << "-" << binary_to_square(taken & -taken);
-      taken &= taken-1;
-   }
-   std::cout << "-" << (int)to;
 }

@@ -12,37 +12,29 @@ https://mediocrechess.blogspot.com/2007/01/guide-aspiration-windows-killer-moves
 
 #include "transposition.hpp"
 
-cpu::cpu(int cpu_color, int cpu_depth,
-    const int TT_SIZE,
-    const int ETT_SIZE,
-    const int PIECE_VALUE,
-    const int KING_VALUE,
-    const int CENTER_VALUE,
-    const int MOBILE_PIECE_VALUE,
-    const int WINDOW_NARROWING_DEPTH) : 
-    TT_SIZE(TT_SIZE),
-    ETT_SIZE(ETT_SIZE),
-    PIECE_VALUE(PIECE_VALUE),
-    KING_VALUE(KING_VALUE),
-    CENTER_VALUE(CENTER_VALUE),
-    MOBILE_PIECE_VALUE(MOBILE_PIECE_VALUE),
-    WINDOW_NARROWING_DEPTH(WINDOW_NARROWING_DEPTH) {
-
-    color = cpu_color;
-    max_depth = cpu_depth;
-    current_depth = max_depth;
-    table.set_size(TT_SIZE);
-    eval_table.set_size(ETT_SIZE);
-}
+cpu::cpu(int cpu_color,
+         const int TT_SIZE,
+         const int ETT_SIZE,
+         const int PIECE_VALUE,
+         const int KING_VALUE,
+         const int CENTER_VALUE,
+         const int MOBILE_PIECE_VALUE,
+         const int WINDOW_NARROWING_DEPTH)
+    : 
+color(cpu_color),
+current_depth(1),
+table(TT_SIZE),
+eval_table(ETT_SIZE),
+PIECE_VALUE(PIECE_VALUE),
+KING_VALUE(KING_VALUE),
+CENTER_VALUE(CENTER_VALUE),
+MOBILE_PIECE_VALUE(MOBILE_PIECE_VALUE),
+WINDOW_NARROWING_DEPTH(WINDOW_NARROWING_DEPTH)
+{}
 
 /* changes the color that the cpu plays for */
 void cpu::set_color(int new_color){
     color = new_color;
-}
-
-/* sets the depth of the cpu */
-void cpu::set_depth(int new_depth){
-    max_depth = new_depth;
 }
 
 int cpu::mobility_score(Bitboards &board) {
@@ -584,28 +576,6 @@ void cpu::age_history_table() {
             }
         }
     }
-}
-
-/*
-Perfoms a minimax search up to the max_depth of the cpu
-and returns the best move.
-*/
-Move cpu::max_depth_search(Board &board, bool feedback){
-    if (feedback){
-        std::cout << "calculating... \n";
-    }
-
-    Move movelist[MAX_MOVES];
-    board.gen_moves(movelist, (char)-1);
-    move_to_make = movelist[0];
-    time_limit = INFINITY;
-
-    int val = search_root(board, max_depth, -MAX_VAL, MAX_VAL);
-
-    if (feedback){
-        std::cout << "The best move has a value of " << (double)val/75;
-    }
-    return move_to_make;
 }
 
 /* Orders the moves based on their score. */

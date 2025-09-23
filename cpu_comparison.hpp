@@ -7,36 +7,11 @@
 #include <cmath>
 #include <random>
 
-class depth_games{
-    int games;
-    int depth;
-    int pos_advantage_cutoff;
-    int verification_depth;
-    int draw_piece_diff;
-    int draw_move_cutoff;
-    int random_pos_depth;
-    int random_pos_variation;
-
-    int new_vs_current[3] = {0, 0, 0};
-
-    cpu current_version;
-    new_cpu new_version;
-    cpu eval_cpu;
-
-    public:
-        depth_games(int games, int depth, int maximum_pos_advantage = .5, int verification_search_depth = 8, 
-                    int piece_diff_for_draw = 1, int min_draw_moves = 200, int rand_pos_depth = 12, int rand_pos_variation = 3);
-        void run_games();
-        void print_results();
-};
-
 class time_games{
     int games;
     double time_limit;
     int pos_advantage_cutoff;
     int verification_depth;
-    int draw_piece_diff;
-    int draw_move_cutoff;
     int random_pos_depth;
     int random_pos_variation;
 
@@ -52,9 +27,12 @@ class time_games{
     int curr_total_depth;
 
     cpu eval_cpu;
-    public:
-        time_games(int games, double t, int maximum_pos_advantage = .5, int verification_search_depth = 8,
-                   int piece_diff_for_draw = 1, int min_draw_moves = 200, int rand_pos_depth = 12, int rand_pos_variation = 3);
-        void run_games();
-        void print_results();
+public:
+    time_games(int games, double t, int maximum_pos_advantage = 50, float verification_search_depth = 13, int rand_pos_depth = 12, int rand_pos_variation = 3);
+    void run_games();
+    void print_results();
+    
+private:
+    void run_game(const Board& start_pos, int new_cpu_color);
+    Board get_random_pos();
 };

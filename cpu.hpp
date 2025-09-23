@@ -14,43 +14,36 @@
 #define NO_PV      0
 
 //VERSION 1.0
-class cpu{
-    
+class cpu {
 public:
-    int max_depth;
-    int current_depth;
     int color;
+    int current_depth;
     unsigned long nodes_traversed;
     uint64_t time_limit;
     tt_table table;
     tt_eval_table eval_table;
     
     cpu(int cpu_color = 0,
-        int cpu_depth = 10,
         const int TT_SIZE = 0x4000000,
         const int ETT_SIZE = 0x4000000,
         const int PIECE_VALUE = 75,
-        const int KING_VALUE = 2,
+        const int KING_VALUE = 25,
         const int CENTER_VALUE = 10,
         const int MOBILE_PIECE_VALUE = 10,
         const int WINDOW_NARROWING_DEPTH = 8);
 
-    Move max_depth_search(Board &board, bool feedback = true);
     Move time_search(Board &board, double t_limit, bool feedback = true);
+    int search_iterate(Board &board);
     int search_root(Board &board, int depth, int alpha, int beta);
     int search(Board &board, int depth, int ply, int alpha, int beta, int is_pv);
-    
     void set_color(int new_color);
-    void set_depth(int new_depth);
     
-protected:
-    const int TT_SIZE;
-    const int ETT_SIZE = 0x4000000;
-    const int PIECE_VALUE = 75;
-    const int KING_VALUE = 25;
-    const int CENTER_VALUE = 10;
-    const int MOBILE_PIECE_VALUE = 10;
-    const int WINDOW_NARROWING_DEPTH = 8;
+    protected:
+    const int PIECE_VALUE;
+    const int KING_VALUE;
+    const int CENTER_VALUE;
+    const int MOBILE_PIECE_VALUE;
+    const int WINDOW_NARROWING_DEPTH;
     
     Move killers[1024][2];
     int cutoff[2][32][32];
@@ -71,7 +64,6 @@ protected:
     bool search_cancelled = false;
     Move move_to_make;
     
-    int search_iterate(Board &board);
     int search_widen(Board &board, int depth, int val);
     int quiesce(Board &board, int ply, int alpha, int beta);
     
@@ -82,10 +74,10 @@ protected:
     void set_killers(Move &m, int ply);
     void age_history_table();
     
-        void set_move_scores(Move * m, int movecount, int ply);
-        void order_moves(int movecount, Move * m, int current);
-
-        inline void check_time(){
+    void set_move_scores(Move * m, int movecount, int ply);
+    void order_moves(int movecount, Move * m, int current);
+    
+    inline void check_time(){
             if (!(nodes_traversed & 4095) && !search_cancelled){
                 search_cancelled = get_time() - search_start > time_limit;
             }
